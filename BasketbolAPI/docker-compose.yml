@@ -1,0 +1,31 @@
+services:
+  basketbol-db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: basketbol-veritabani-kutusu
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=Sifre123!BasketAjani
+    ports:
+      - "1433:1433"
+    networks:
+      - basketbol-network
+
+  basketbol-api:
+    image: basketbol-api-image
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: basketbol-api-kutusu
+    ports:
+      - "5090:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Server=basketbol-db;Database=BasketbolDB;User Id=sa;Password=Sifre123!BasketAjani;TrustServerCertificate=True;
+    depends_on:
+      - basketbol-db
+    networks:
+      - basketbol-network
+
+networks:
+  basketbol-network:
+    driver: bridge

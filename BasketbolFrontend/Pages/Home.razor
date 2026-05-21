@@ -1,0 +1,74 @@
+﻿@page "/"
+@inject HttpClient Http
+@using System.Net.Http.Json
+
+<PageTitle>EuroLeague Takımları</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4 mt-2">
+    <h1 class="fw-bold text-dark">EuroLeague Takımları 🏀</h1>
+</div>
+<hr class="mb-4" />
+
+@if (teams == null)
+{
+    <div class="d-flex justify-content-center mt-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Yükleniyor...</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        @foreach (var team in teams)
+        {
+            <div class="col">
+                <div class="card h-100 shadow-sm border-0 hover-effect">
+                    <div class="card-body text-center p-4">
+                        <h3 class="card-title fw-bold text-dark mb-4">@team.Name</h3>
+                        <div class="text-start ms-3">
+                            <p class="card-text text-muted mb-2">🏙️ <strong>Şehir:</strong> @team.City</p>
+                            <p class="card-text text-muted mb-2">👔 <strong>Koç:</strong> @team.Coach</p>
+                            <p class="card-text text-muted mb-4">📅 <strong>Kuruluş:</strong> @team.FoundedYear</p>
+                        </div>
+                        
+                        <a href="/team/@team.Id" class="btn btn-outline-primary w-100 fw-bold rounded-pill">
+                            Kadroyu Gör ⛹️‍♂️
+                        </a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@* Kartların üstüne fareyle gelince hafifçe havaya kalkmasını sağlayan sihirli CSS *@
+<style>
+    .hover-effect {
+        transition: all 0.3s ease-in-out;
+        background-color: #f8f9fa;
+    }
+    .hover-effect:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 15px 25px rgba(0,0,0,0.1) !important;
+        background-color: #ffffff;
+    }
+</style>
+
+@code {
+    private List<Team>? teams;
+
+    protected override async Task OnInitializedAsync()
+    {
+        teams = await Http.GetFromJsonAsync<List<Team>>("http://localhost:5090/api/Teams");
+    }
+
+    public class Team
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string City { get; set; } = string.Empty;
+        public string Coach { get; set; } = string.Empty;
+        public int FoundedYear { get; set; }
+    }
+}

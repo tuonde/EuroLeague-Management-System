@@ -1,0 +1,60 @@
+@BasketbolAPI_HostAddress = http://localhost:5090
+
+### Tüm Takımları Getir
+GET {{BasketbolAPI_HostAddress}}/api/teams
+Accept: application/json
+
+### ID'si 1 olan takıma ait oyuncuları getir
+GET {{BasketbolAPI_HostAddress}}/api/players/team/2
+Accept: application/json
+
+### Yeni bir oyuncu ekle
+POST {{BasketbolAPI_HostAddress}}/api/players
+Content-Type: application/json
+
+{
+  "fullName": "Örnek Oyuncu",
+  "jerseyNumber": 9,
+  "position": "Oyun kurucu",
+  "teamId": 1
+}
+### Galatasaray'ın Maçlarını Getir
+GET {{BasketbolAPI_HostAddress}}/api/matches/team/1
+Accept: application/json
+
+### Yeni kullanıcı kaydı oluşturma
+POST http://localhost:5090/api/auth/register
+Content-Type: application/json
+
+{ "username": "admin", "password": "Sifre123!" }
+
+
+### Giriş Yap ve Token Al
+POST {{BasketbolAPI_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{ 
+  "username": "admin", 
+  "password": "Sifre123!" 
+}
+
+### Önce Admini Kaydet (Register)
+POST http://localhost:5090/api/Auth/register
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "Sifre123!"
+}
+
+### Yeni Takım Ekle (Güvenlikli)
+POST {{BasketbolAPI_HostAddress}}/api/teams
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1lIjoiYWRtaW4iLCJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkvY2xhaW1zL3JvbGUiOiJBZG1pbiIsImV4cCI6MTc3ODk1OTEwMywiaXNzIjoiQmFza2V0Ym9sQVBJIiwiYXVkIjoiQmFza2V0Ym9sQVBJVXNlcnMifQ.rVaJFVMR1_VtgNNhSWpxyxT2YdnQVYX-1k9jE0EEX6E
+Content-Type: application/json
+
+{
+  "name": "Bursaspor Basketbol",
+  "city": "Bursa",
+  "coach": "Serhan Kavut", 
+  "foundedYear": 2014
+}

@@ -1,0 +1,66 @@
+@page "/team/{TeamId:int}"
+@inject HttpClient Http
+@using System.Net.Http.Json
+
+<PageTitle>Takım Kadrosu</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4 mt-2">
+    <h1 class="fw-bold text-dark">Takım Kadrosu ⛹️‍♂️</h1>
+    <a href="/" class="btn btn-outline-secondary rounded-pill fw-bold">⬅ Takımlara Dön</a>
+</div>
+<hr class="mb-4" />
+
+@if (players == null)
+{
+    <div class="d-flex justify-content-center mt-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Oyuncular yükleniyor...</span>
+        </div>
+    </div>
+}
+else if (!players.Any())
+{
+    <div class="alert alert-warning text-center fs-5 shadow-sm">
+        Bu takımın kadrosunda henüz kayıtlı bir oyuncu bulunmamaktadır.
+    </div>
+}
+else
+{
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-4">
+        @foreach (var player in players)
+        {
+            <div class="col">
+                <div class="card h-100 shadow-sm border-0 bg-light text-center p-3">
+                    <div class="card-body">
+                        <div class="display-3 fw-bold text-primary mb-2">#@player.JerseyNumber</div>
+                        <h4 class="card-title fw-bold text-dark mb-3">@player.FullName</h4>
+                        <span class="badge bg-dark px-3 py-2 rounded-pill fs-6">@player.Position</span>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    // URL'den gelen (örn: /team/1) id değerini bu değişkene yakalatıyoruz
+    [Parameter]
+    public int TeamId { get; set; }
+
+    private List<Player>? players;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Senin PlayersController içindeki "api/Players/team/{teamId}" ucuna istek atıyoruz
+        players = await Http.GetFromJsonAsync<List<Player>>($"http://localhost:5090/api/Players/team/{TeamId}");
+    }
+
+    // Backend'deki PlayerDto yapısıyla birebir eşleşen frontend modelimiz
+    public class Player
+    {
+        public int Id { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public int JerseyNumber { get; set; }
+        public string Position { get; set; } = string.Empty;
+    }
+}

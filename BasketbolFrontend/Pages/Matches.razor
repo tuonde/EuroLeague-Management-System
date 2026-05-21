@@ -1,0 +1,86 @@
+@page "/matches"
+@inject HttpClient Http
+@using System.Net.Http.Json
+
+<PageTitle>Fikstür ve Maçlar</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4 mt-2">
+    <h1 class="fw-bold text-dark">Fikstür ve Maç Sonuçları 📅</h1>
+</div>
+<hr class="mb-4" />
+
+@if (matches == null)
+{
+    <div class="d-flex justify-content-center mt-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Fikstür Çekiliyor...</span>
+        </div>
+    </div>
+}
+else if (!matches.Any())
+{
+    <div class="alert alert-info text-center fs-5 shadow-sm">
+        Henüz planlanmış bir maç bulunmamaktadır.
+    </div>
+}
+else
+{
+    <div class="row">
+        @foreach (var match in matches.OrderByDescending(m => m.MatchDate))
+        {
+            <div class="col-12 mb-4">
+                <div class="card shadow-sm border-0 bg-light">
+                    <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-center p-4">
+                        
+                        <div class="text-center mb-3 mb-md-0" style="flex: 1;">
+                            <h3 class="fw-bold text-dark mb-0">@match.HomeTeamName</h3>
+                            <span class="badge bg-secondary mt-2">Ev Sahibi</span>
+                        </div>
+
+                        <div class="text-center px-4" style="flex: 1;">
+                            @if (match.MatchDate > DateTime.Now)
+                            {
+                                <span class="badge bg-warning text-dark mb-2 px-3 py-2 rounded-pill fs-6 shadow-sm">⏳ Yaklaşan Maç</span>
+                                <h5 class="fw-bold text-muted mt-2">@match.MatchDate.ToString("dd MMM yyyy - HH:mm")</h5>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success mb-2 px-3 py-2 rounded-pill fs-6 shadow-sm">✅ Maç Sonucu</span>
+                                <div class="display-5 fw-bolder text-dark my-2">
+                                    @match.HomeScore <span class="text-muted fs-4 mx-2">-</span> @match.AwayScore
+                                </div>
+                                <small class="text-muted fw-bold">@match.MatchDate.ToString("dd MMM yyyy")</small>
+                            }
+                        </div>
+
+                        <div class="text-center mt-3 mt-md-0" style="flex: 1;">
+                            <h3 class="fw-bold text-dark mb-0">@match.AwayTeamName</h3>
+                            <span class="badge bg-dark mt-2">Deplasman</span>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<Match>? matches;
+
+    protected override async Task OnInitializedAsync()
+    {
+        matches = await Http.GetFromJsonAsync<List<Match>>("http://localhost:5090/api/Matches");
+    }
+
+    // Frontend modelini senin DTO yapına göre tam olarak güncelledik!
+    public class Match
+    {
+        public int Id { get; set; }
+        public int HomeScore { get; set; }
+        public int AwayScore { get; set; }
+        public DateTime MatchDate { get; set; }
+        public string HomeTeamName { get; set; } = string.Empty;
+        public string AwayTeamName { get; set; } = string.Empty;
+    }
+}

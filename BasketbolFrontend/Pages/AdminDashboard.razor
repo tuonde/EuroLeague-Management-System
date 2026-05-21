@@ -1,0 +1,827 @@
+@page "/admin"
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@using System.Net.Http.Headers
+@using System.Net.Http.Json
+
+<PageTitle>Yönetim Paneli</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold text-dark">Kontrol Merkezi 👑</h1>
+        <button class="btn btn-outline-danger fw-bold rounded-pill px-4 shadow-sm" @onclick="Logout">
+            🚪 Çıkış Yap
+        </button>
+    </div>
+    <hr />
+    <!--
+    <button class="btn btn-danger fw-bold mb-4 w-100 shadow text-white" @onclick="TumLigiTekSeferdeKur">
+        🚀 LİGİ KUR: Tüm Takımların Kadrolarını Tek Seferde Veritabanına Yaz!
+    </button>
+    <button class="btn btn-primary fw-bold mb-4 w-100 shadow text-white" @onclick="FiksturVeMaclariOlustur">
+        📅 FİKSTÜRÜ OLUŞTUR: 1. ve 2. Hafta Maçlarını Tanımla
+    </button>
+    -->
+    <ul class="nav nav-pills mb-4 shadow-sm p-2 bg-light rounded">
+        <li class="nav-item">
+            <button class="nav-link fw-bold @(activeTab == "teams" ? "active" : "text-dark")" @onclick='() => activeTab = "teams"'>🏀 Takımlar</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link fw-bold @(activeTab == "players" ? "active" : "text-dark")" @onclick='() => activeTab = "players"'>⛹️‍♂️ Oyuncular</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link fw-bold @(activeTab == "matches" ? "active" : "text-dark")" @onclick='() => activeTab = "matches"'>📅 Maçlar</button>
+        </li>
+    </ul>
+
+    @if (isLoading)
+    {
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">Veriler Yükleniyor...</p>
+        </div>
+    }
+    else
+    {
+        @if (activeTab == "teams")
+        {
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
+                    <strong>Hata!</strong> @errorMessage
+                    <button type="button" class="btn-close" @onclick="() => errorMessage = string.Empty"></button>
+                </div>
+            }
+
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-primary text-white fw-bold">
+                            @(editingTeamId == 0 ? "Yeni Takım Ekle" : "Takımı Güncelle")
+                        </div>
+                        <div class="card-body bg-light">
+                            <input type="text" class="form-control mb-2" placeholder="Takım Adı (Örn: Galatasaray)" @bind="currentTeam.Name" />
+                            <input type="text" class="form-control mb-2" placeholder="Şehir (Örn: İstanbul)" @bind="currentTeam.City" />
+                            <input type="text" class="form-control mb-2" placeholder="Koç (Örn: Zvezdan Mitrovic)" @bind="currentTeam.Coach" />
+                            <input type="number" class="form-control mb-3" placeholder="Kuruluş Yılı" @bind="currentTeam.FoundedYear" />
+                            
+                            <button class="btn btn-success w-100 fw-bold" @onclick="SaveTeam">
+                                @(editingTeamId == 0 ? "Ekle" : "Güncelle")
+                            </button>
+                            @if(editingTeamId != 0) 
+                            { 
+                                <button class="btn btn-secondary w-100 mt-2" @onclick="CancelEdit">İptal</button> 
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <table class="table table-hover shadow-sm bg-white rounded">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>ID</th><th>Takım Adı</th><th>Şehir</th><th>Koç</th><th>Kuruluş</th><th>İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach(var t in teams)
+                            {
+                                <tr>
+                                    <td>@t.Id</td><td class="fw-bold">@t.Name</td><td>@t.City</td><td>@t.Coach</td><td>@t.FoundedYear</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-warning" @onclick="() => EditTeam(t)">✏️</button>
+                                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteTeam(t.Id)">🗑️</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
+        @if (activeTab == "players")
+        {
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-success text-white fw-bold">
+                            @(editingPlayerId == 0 ? "Yeni Oyuncu Ekle" : "Oyuncuyu Güncelle")
+                        </div>
+                        <div class="card-body bg-light">
+                            <input type="text" class="form-control mb-2" placeholder="Ad Soyad" @bind="currentPlayer.FullName" />
+                            <input type="number" class="form-control mb-2" placeholder="Forma No" @bind="currentPlayer.JerseyNumber" />
+                            <input type="text" class="form-control mb-2" placeholder="Mevki (Örn: Oyun Kurucu)" @bind="currentPlayer.Position" />
+                            <select class="form-select mb-3" @bind="currentPlayer.TeamId">
+                                <option value="0">Takım Seçiniz...</option>
+                                @foreach(var t in teams) { <option value="@t.Id">@t.Name</option> }
+                            </select>
+                            
+                            <button class="btn btn-success w-100 fw-bold" @onclick="SavePlayer">
+                                @(editingPlayerId == 0 ? "Ekle" : "Güncelle")
+                            </button>
+                            @if(editingPlayerId != 0) { <button class="btn btn-secondary w-100 mt-2" @onclick="CancelEdit">İptal</button> }
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <table class="table table-hover shadow-sm bg-white rounded">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>ID</th><th>Oyuncu</th><th>Forma No</th><th>Mevki</th><th>Takımı</th><th>İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach(var p in players)
+                            {
+                                <tr>
+                                    <td>@p.Id</td><td class="fw-bold">@p.FullName</td><td>#@p.JerseyNumber</td><td>@p.Position</td>
+                                    <td><span class="badge bg-secondary">@p.TeamName</span></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-warning" @onclick="() => EditPlayer(p)">✏️</button>
+                                        <button class="btn btn-sm btn-danger" @onclick="() => DeletePlayer(p.Id)">🗑️</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
+        @if (activeTab == "matches")
+        {
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-dark text-white fw-bold">
+                            @(editingMatchId == 0 ? "Yeni Maç Ekle" : "Maçı Güncelle")
+                        </div>
+                        <div class="card-body bg-light">
+                            <label class="fw-bold small text-muted">Ev Sahibi</label>
+                            <select class="form-select mb-2" @bind="currentMatch.HomeTeamId">
+                                <option value="0">Seçiniz...</option>
+                                @foreach(var t in teams) { <option value="@t.Id">@t.Name</option> }
+                            </select>
+                            
+                            <label class="fw-bold small text-muted">Deplasman</label>
+                            <select class="form-select mb-2" @bind="currentMatch.AwayTeamId">
+                                <option value="0">Seçiniz...</option>
+                                @foreach(var t in teams) { <option value="@t.Id">@t.Name</option> }
+                            </select>
+
+                            <div class="d-flex gap-2 mb-2">
+                                <input type="number" class="form-control" placeholder="Ev Skor" @bind="currentMatch.HomeScore" />
+                                <input type="number" class="form-control" placeholder="Dep Skor" @bind="currentMatch.AwayScore" />
+                            </div>
+
+                            <label class="fw-bold small text-muted">Tarih ve Saat</label>
+                            <input type="datetime-local" class="form-control mb-3" @bind="currentMatch.MatchDate" />
+
+                            <button class="btn btn-success w-100 fw-bold" @onclick="SaveMatch">
+                                @(editingMatchId == 0 ? "Ekle" : "Güncelle")
+                            </button>
+                            @if(editingMatchId != 0) { <button class="btn btn-secondary w-100 mt-2" @onclick="CancelEdit">İptal</button> }
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <table class="table table-hover shadow-sm bg-white rounded">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Ev Sahibi</th><th>Skor</th><th>Deplasman</th><th>Tarih</th><th>İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach(var m in matches.OrderByDescending(x => x.MatchDate))
+                            {
+                                <tr>
+                                    <td class="fw-bold text-end">@m.HomeTeamName</td>
+                                    <td class="text-center bg-light fw-bold fs-5">@m.HomeScore - @m.AwayScore</td>
+                                    <td class="fw-bold text-start">@m.AwayTeamName</td>
+                                    <td>@m.MatchDate.ToString("dd.MM.yyyy HH:mm")</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-warning" @onclick="() => EditMatch(m)">✏️</button>
+                                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteMatch(m.Id)">🗑️</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private string activeTab = "teams";
+    private bool isLoading = true;
+    private string errorMessage = string.Empty; // EKSİK OLAN SATIR BURAYA EKLENDİ
+
+    // Listeler
+    private List<TeamDto> teams = new();
+    private List<PlayerDto> players = new();
+    private List<MatchDto> matches = new();
+
+    // Form Modelleri (DTO'ların yansıması)
+    private TeamCreateDto currentTeam = new();
+    private int editingTeamId = 0;
+
+    private PlayerCreateDto currentPlayer = new();
+    private int editingPlayerId = 0;
+
+    private MatchCreateDto currentMatch = new() { MatchDate = DateTime.Now };
+    private int editingMatchId = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 1. JWT Token'ı LocalStorage'dan al
+        var token = await JS.InvokeAsync<string>("localStorage.getItem", "jwt_token");
+        if (string.IsNullOrEmpty(token))
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        // 2. HttpClient'a Bearer Token'ı ekle (Bütün POST/PUT/DELETE işlemleri için yetki sağlar)
+        Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        await LoadAllData();
+        isLoading = false;
+    }
+
+    private async Task LoadAllData()
+    {
+        teams = await Http.GetFromJsonAsync<List<TeamDto>>("http://localhost:5090/api/Teams") ?? new();
+        players = await Http.GetFromJsonAsync<List<PlayerDto>>("http://localhost:5090/api/Players") ?? new();
+        matches = await Http.GetFromJsonAsync<List<MatchDto>>("http://localhost:5090/api/Matches") ?? new();
+    }
+
+    private void CancelEdit()
+    {
+        editingTeamId = 0; currentTeam = new();
+        editingPlayerId = 0; currentPlayer = new();
+        editingMatchId = 0; currentMatch = new() { MatchDate = DateTime.Now };
+    }
+
+    /*
+    // ==================== OYUNCULARI EKLE ====================
+    private async Task TumLigiTekSeferdeKur()
+    {
+        isLoading = true;
+        errorMessage = "Tüm EuroLeague kadroları (20 Takım) veritabanına işleniyor. Bu işlem 10-15 saniye sürebilir, lütfen bekleyin... ⏳🏀";
+        StateHasChanged();
+
+        var devKadroListesi = new List<PlayerCreateDto>
+        {
+            // --- 1006: ANADOLU EFES ---
+            new() { FullName = "Shane Larkin", JerseyNumber = 0, Position = "Gard", TeamId = 1006 },
+            new() { FullName = "Rodrigue Beaubois", JerseyNumber = 1, Position = "Gard", TeamId = 1006 },
+            new() { FullName = "Sehmus Hazer", JerseyNumber = 2, Position = "Gard", TeamId = 1006 },
+            new() { FullName = "Jordan Loyd", JerseyNumber = 3, Position = "Gard", TeamId = 1006 },
+            new() { FullName = "Saben Lee", JerseyNumber = 5, Position = "Gard", TeamId = 1006 },
+            new() { FullName = "Ruzgar Fenemen", JerseyNumber = 6, Position = "Gard", TeamId = 1006 },
+            new() { FullName = "Nick Weiler-Babb", JerseyNumber = 8, Position = "Gard", TeamId = 1006 },
+            new() { FullName = "Isaia Cordinier", JerseyNumber = 10, Position = "Gard", TeamId = 1006 },
+            new() { FullName = "PJ Dozier", JerseyNumber = 15, Position = "Gard", TeamId = 1006 },
+            new() { FullName = "David Mutaf", JerseyNumber = 23, Position = "Gard", TeamId = 1006 },
+            new() { FullName = "Rolands Smits", JerseyNumber = 11, Position = "Forvet", TeamId = 1006 },
+            new() { FullName = "Burakcan Yildizli", JerseyNumber = 19, Position = "Forvet", TeamId = 1006 },
+            new() { FullName = "Cole Swider", JerseyNumber = 21, Position = "Forvet", TeamId = 1006 },
+            new() { FullName = "Ercan Osmani", JerseyNumber = 24, Position = "Forvet", TeamId = 1006 },
+            new() { FullName = "Erkan Yilmaz", JerseyNumber = 33, Position = "Forvet", TeamId = 1006 },
+            new() { FullName = "Georgios Papagiannis", JerseyNumber = 9, Position = "Pivot", TeamId = 1006 },
+            new() { FullName = "Brice Dessert", JerseyNumber = 13, Position = "Pivot", TeamId = 1006 },
+            new() { FullName = "Vincent Poirier", JerseyNumber = 17, Position = "Pivot", TeamId = 1006 },
+            new() { FullName = "Kai Jones", JerseyNumber = 88, Position = "Pivot", TeamId = 1006 },
+
+            // --- 1007: AS MONACO ---
+            new() { FullName = "Elie Okobo", JerseyNumber = 0, Position = "Gard", TeamId = 1007 },
+            new() { FullName = "Terry Tarpey", JerseyNumber = 22, Position = "Gard", TeamId = 1007 },
+            new() { FullName = "Nemanja Nedovic", JerseyNumber = 26, Position = "Gard", TeamId = 1007 },
+            new() { FullName = "Matthew Strazel", JerseyNumber = 32, Position = "Gard", TeamId = 1007 },
+            new() { FullName = "Mike James", JerseyNumber = 55, Position = "Gard", TeamId = 1007 },
+            new() { FullName = "Jaron Blossomgame", JerseyNumber = 4, Position = "Forvet", TeamId = 1007 },
+            new() { FullName = "Alpha Diallo", JerseyNumber = 11, Position = "Forvet", TeamId = 1007 },
+            new() { FullName = "Juhann Begarin", JerseyNumber = 23, Position = "Forvet", TeamId = 1007 },
+            new() { FullName = "Daniel Theis", JerseyNumber = 10, Position = "Pivot", TeamId = 1007 },
+            new() { FullName = "Kevarrius Hayes", JerseyNumber = 13, Position = "Pivot", TeamId = 1007 },
+            new() { FullName = "Nikola Mirotic", JerseyNumber = 33, Position = "Pivot", TeamId = 1007 },
+
+            // --- 1008: CRVENA ZVEZDA ---
+            new() { FullName = "Codi Miller-McIntyre", JerseyNumber = 0, Position = "Gard", TeamId = 1008 },
+            new() { FullName = "Stefan Miljenovic", JerseyNumber = 2, Position = "Gard", TeamId = 1008 },
+            new() { FullName = "Isaiah Canaan", JerseyNumber = 3, Position = "Gard", TeamId = 1008 },
+            new() { FullName = "Jared Butler", JerseyNumber = 6, Position = "Gard", TeamId = 1008 },
+            new() { FullName = "Tyson Carter", JerseyNumber = 11, Position = "Gard", TeamId = 1008 },
+            new() { FullName = "Novak Pavlovic", JerseyNumber = 18, Position = "Gard", TeamId = 1008 },
+            new() { FullName = "Ognjen Simjanovski", JerseyNumber = 19, Position = "Gard", TeamId = 1008 },
+            new() { FullName = "Ognjen Radosic", JerseyNumber = 44, Position = "Gard", TeamId = 1008 },
+            new() { FullName = "Yago Dos Santos", JerseyNumber = 99, Position = "Gard", TeamId = 1008 },
+            new() { FullName = "Aleksej Nedeljkovic", JerseyNumber = 5, Position = "Forvet", TeamId = 1008 },
+            new() { FullName = "Dejan Davidovac", JerseyNumber = 7, Position = "Forvet", TeamId = 1008 },
+            new() { FullName = "Nikola Kalinic", JerseyNumber = 12, Position = "Forvet", TeamId = 1008 },
+            new() { FullName = "Ognjen Dobric", JerseyNumber = 13, Position = "Forvet", TeamId = 1008 },
+            new() { FullName = "Jordan Nwora", JerseyNumber = 33, Position = "Forvet", TeamId = 1008 },
+            new() { FullName = "Semi Ojeleye", JerseyNumber = 37, Position = "Forvet", TeamId = 1008 },
+            new() { FullName = "Chima Moneke", JerseyNumber = 95, Position = "Forvet", TeamId = 1008 },
+            new() { FullName = "Jasiel Rivero", JerseyNumber = 14, Position = "Pivot", TeamId = 1008 },
+            new() { FullName = "Ebuka Izundu", JerseyNumber = 15, Position = "Pivot", TeamId = 1008 },
+            new() { FullName = "Sava Djuric", JerseyNumber = 16, Position = "Pivot", TeamId = 1008 },
+            new() { FullName = "Lazar Stojkovic", JerseyNumber = 17, Position = "Pivot", TeamId = 1008 },
+            new() { FullName = "Donatas Motiejunas", JerseyNumber = 20, Position = "Pivot", TeamId = 1008 },
+            new() { FullName = "Joel Bolomboy", JerseyNumber = 21, Position = "Pivot", TeamId = 1008 },
+
+            // --- 1009: DUBAI BASKETBALL ---
+            new() { FullName = "Nate Mason", JerseyNumber = 1, Position = "Gard", TeamId = 1009 },
+            new() { FullName = "Aleksa Avramovic", JerseyNumber = 4, Position = "Gard", TeamId = 1009 },
+            new() { FullName = "Klemen Prepelic", JerseyNumber = 7, Position = "Gard", TeamId = 1009 },
+            new() { FullName = "Kosta Kondic", JerseyNumber = 11, Position = "Gard", TeamId = 1009 },
+            new() { FullName = "Dzanan Musa", JerseyNumber = 13, Position = "Gard", TeamId = 1009 },
+            new() { FullName = "McKinley Wright IV", JerseyNumber = 25, Position = "Gard", TeamId = 1009 },
+            new() { FullName = "Nemanja Dangubic", JerseyNumber = 2, Position = "Forvet", TeamId = 1009 },
+            new() { FullName = "Dwayne Bacon", JerseyNumber = 3, Position = "Forvet", TeamId = 1009 },
+            new() { FullName = "Awudu Abass", JerseyNumber = 5, Position = "Forvet", TeamId = 1009 },
+            new() { FullName = "Davis Bertans", JerseyNumber = 8, Position = "Forvet", TeamId = 1009 },
+            new() { FullName = "Justin Anderson", JerseyNumber = 10, Position = "Forvet", TeamId = 1009 },
+            new() { FullName = "Mfiondu Kabengele", JerseyNumber = 17, Position = "Pivot", TeamId = 1009 },
+            new() { FullName = "Filip Petrusev", JerseyNumber = 30, Position = "Pivot", TeamId = 1009 },
+            new() { FullName = "Kenan Kamenjas", JerseyNumber = 34, Position = "Pivot", TeamId = 1009 },
+            new() { FullName = "Bruno Caboclo", JerseyNumber = 51, Position = "Pivot", TeamId = 1009 },
+
+            // --- 1010: EA7 EMPORIO ARMANI MILAN ---
+            new() { FullName = "Niccolo Mannion", JerseyNumber = 1, Position = "Gard", TeamId = 1010 },
+            new() { FullName = "Lorenzo Brown", JerseyNumber = 2, Position = "Gard", TeamId = 1010 },
+            new() { FullName = "Quinn Ellis", JerseyNumber = 3, Position = "Gard", TeamId = 1010 },
+            new() { FullName = "Mattia Ceccato", JerseyNumber = 5, Position = "Gard", TeamId = 1010 },
+            new() { FullName = "Stefano Tonut", JerseyNumber = 7, Position = "Gard", TeamId = 1010 },
+            new() { FullName = "Leandro Bolmaro", JerseyNumber = 10, Position = "Gard", TeamId = 1010 },
+            new() { FullName = "Armoni Brooks", JerseyNumber = 12, Position = "Gard", TeamId = 1010 },
+            new() { FullName = "Jacopo Vogogna", JerseyNumber = 20, Position = "Gard", TeamId = 1010 },
+            new() { FullName = "Diego Flaccadori", JerseyNumber = 21, Position = "Gard", TeamId = 1010 },
+            new() { FullName = "Marko Guduric", JerseyNumber = 23, Position = "Gard", TeamId = 1010 },
+            new() { FullName = "Zach LeDay", JerseyNumber = 16, Position = "Forvet", TeamId = 1010 },
+            new() { FullName = "Giampaolo Ricci", JerseyNumber = 17, Position = "Forvet", TeamId = 1010 },
+            new() { FullName = "Shavon Shields", JerseyNumber = 31, Position = "Forvet", TeamId = 1010 },
+            new() { FullName = "Nathan Sestina", JerseyNumber = 77, Position = "Forvet", TeamId = 1010 },
+            new() { FullName = "Devin Booker", JerseyNumber = 6, Position = "Pivot", TeamId = 1010 },
+            new() { FullName = "Ousmane Diop", JerseyNumber = 25, Position = "Pivot", TeamId = 1010 },
+            new() { FullName = "Josh Nebo", JerseyNumber = 32, Position = "Pivot", TeamId = 1010 },
+            new() { FullName = "Bryant Dunston", JerseyNumber = 42, Position = "Pivot", TeamId = 1010 },
+
+            // --- 1011: FC BARCELONA ---
+            new() { FullName = "Kevin Punter", JerseyNumber = 0, Position = "Gard", TeamId = 1011 },
+            new() { FullName = "Juani Marcos", JerseyNumber = 2, Position = "Gard", TeamId = 1011 },
+            new() { FullName = "Dario Brizuela", JerseyNumber = 8, Position = "Gard", TeamId = 1011 },
+            new() { FullName = "Tomas Satoransky", JerseyNumber = 13, Position = "Gard", TeamId = 1011 },
+            new() { FullName = "Juan Nunez", JerseyNumber = 17, Position = "Gard", TeamId = 1011 },
+            new() { FullName = "Nicolas Laprovittola", JerseyNumber = 20, Position = "Gard", TeamId = 1011 },
+            new() { FullName = "Myles Cale", JerseyNumber = 3, Position = "Forvet", TeamId = 1011 },
+            new() { FullName = "Miles Norris", JerseyNumber = 5, Position = "Forvet", TeamId = 1011 },
+            new() { FullName = "Will Clyburn", JerseyNumber = 21, Position = "Forvet", TeamId = 1011 },
+            new() { FullName = "Nikola Kusturica", JerseyNumber = 43, Position = "Forvet", TeamId = 1011 },
+            new() { FullName = "Joel Parra", JerseyNumber = 44, Position = "Forvet", TeamId = 1011 },
+            new() { FullName = "Diego Ferreras", JerseyNumber = 45, Position = "Forvet", TeamId = 1011 },
+            new() { FullName = "Joaquim Boumtje", JerseyNumber = 46, Position = "Forvet", TeamId = 1011 },
+            new() { FullName = "Daniel Gonzalez", JerseyNumber = 47, Position = "Forvet", TeamId = 1011 },
+            new() { FullName = "Jan Vesely", JerseyNumber = 6, Position = "Pivot", TeamId = 1011 },
+            new() { FullName = "Willy Hernangomez", JerseyNumber = 14, Position = "Pivot", TeamId = 1011 },
+            new() { FullName = "Youssoupha Fall", JerseyNumber = 19, Position = "Pivot", TeamId = 1011 },
+            new() { FullName = "Tornike Shengelia", JerseyNumber = 23, Position = "Pivot", TeamId = 1011 },
+            new() { FullName = "Mohamed Dabone", JerseyNumber = 40, Position = "Pivot", TeamId = 1011 },
+            new() { FullName = "Sayon Keita", JerseyNumber = 41, Position = "Pivot", TeamId = 1011 },
+
+            // --- 1012: FC BAYERN MUNICH ---
+            new() { FullName = "Neno Dimitrijevic", JerseyNumber = 0, Position = "Gard", TeamId = 1012 },
+            new() { FullName = "Xavier Rathan-Mayes", JerseyNumber = 4, Position = "Gard", TeamId = 1012 },
+            new() { FullName = "Justinian Jessup", JerseyNumber = 10, Position = "Gard", TeamId = 1012 },
+            new() { FullName = "Andreas Obst", JerseyNumber = 13, Position = "Gard", TeamId = 1012 },
+            new() { FullName = "Stefan Jovic", JerseyNumber = 16, Position = "Gard", TeamId = 1012 },
+            new() { FullName = "Justus Hollatz", JerseyNumber = 21, Position = "Gard", TeamId = 1012 },
+            new() { FullName = "Nikolas Sermpezis", JerseyNumber = 30, Position = "Gard", TeamId = 1012 },
+            new() { FullName = "Nicolas Kodjoe", JerseyNumber = 35, Position = "Gard", TeamId = 1012 },
+            new() { FullName = "Caspar Vossenberg", JerseyNumber = 37, Position = "Gard", TeamId = 1012 },
+            new() { FullName = "Kamar Baldwin", JerseyNumber = 44, Position = "Gard", TeamId = 1012 },
+            new() { FullName = "Oscar Da Silva", JerseyNumber = 1, Position = "Forvet", TeamId = 1012 },
+            new() { FullName = "Niels Giffey", JerseyNumber = 5, Position = "Forvet", TeamId = 1012 },
+            new() { FullName = "Vladimir Lucic", JerseyNumber = 11, Position = "Forvet", TeamId = 1012 },
+            new() { FullName = "Kilian Fischer", JerseyNumber = 17, Position = "Forvet", TeamId = 1012 },
+            new() { FullName = "Isiaha Mike", JerseyNumber = 22, Position = "Forvet", TeamId = 1012 },
+            new() { FullName = "Johannes Voigtmann", JerseyNumber = 7, Position = "Pivot", TeamId = 1012 },
+            new() { FullName = "Leon Kratzer", JerseyNumber = 8, Position = "Pivot", TeamId = 1012 },
+            new() { FullName = "Elias Harris", JerseyNumber = 20, Position = "Pivot", TeamId = 1012 },
+            new() { FullName = "Wenyen Gabriel", JerseyNumber = 32, Position = "Pivot", TeamId = 1012 },
+            new() { FullName = "David McCormack", JerseyNumber = 33, Position = "Pivot", TeamId = 1012 },
+
+            // --- 1013: FENERBAHÇE BEKO ---
+            new() { FullName = "Wade Baldwin IV", JerseyNumber = 2, Position = "Gard", TeamId = 1013 },
+            new() { FullName = "Talen Horton Tucker", JerseyNumber = 8, Position = "Gard", TeamId = 1013 },
+            new() { FullName = "Melih Mahmutoglu", JerseyNumber = 10, Position = "Gard", TeamId = 1013 },
+            new() { FullName = "Brandon Boston Jr.", JerseyNumber = 11, Position = "Gard", TeamId = 1013 },
+            new() { FullName = "Nando De Colo", JerseyNumber = 12, Position = "Gard", TeamId = 1013 },
+            new() { FullName = "Devon Hall", JerseyNumber = 20, Position = "Gard", TeamId = 1013 },
+            new() { FullName = "Arturs Zagars", JerseyNumber = 32, Position = "Gard", TeamId = 1013 },
+            new() { FullName = "Metecan Birsen", JerseyNumber = 1, Position = "Forvet", TeamId = 1013 },
+            new() { FullName = "Nicolo Melli", JerseyNumber = 4, Position = "Forvet", TeamId = 1013 },
+            new() { FullName = "Tarik Biberovic", JerseyNumber = 13, Position = "Forvet", TeamId = 1013 },
+            new() { FullName = "Onuralp Bitim", JerseyNumber = 17, Position = "Forvet", TeamId = 1013 },
+            new() { FullName = "Mikael Jantunen", JerseyNumber = 18, Position = "Forvet", TeamId = 1013 },
+            new() { FullName = "Bonzie Colson", JerseyNumber = 50, Position = "Forvet", TeamId = 1013 },
+            new() { FullName = "Armando Bacot Jr.", JerseyNumber = 0, Position = "Pivot", TeamId = 1013 },
+            new() { FullName = "Chris Silva", JerseyNumber = 30, Position = "Pivot", TeamId = 1013 },
+            new() { FullName = "Khem Birch", JerseyNumber = 92, Position = "Pivot", TeamId = 1013 },
+
+            // --- 1014: HAPOEL IBI TEL AVIV ---
+            new() { FullName = "Chris Jones", JerseyNumber = 1, Position = "Gard", TeamId = 1014 },
+            new() { FullName = "Antonio Blakeney", JerseyNumber = 2, Position = "Gard", TeamId = 1014 },
+            new() { FullName = "Elijah Bryant", JerseyNumber = 3, Position = "Gard", TeamId = 1014 },
+            new() { FullName = "Guy Palatin", JerseyNumber = 9, Position = "Gard", TeamId = 1014 },
+            new() { FullName = "Bar Timor", JerseyNumber = 10, Position = "Gard", TeamId = 1014 },
+            new() { FullName = "Vasilije Micic", JerseyNumber = 22, Position = "Gard", TeamId = 1014 },
+            new() { FullName = "Yam Madar", JerseyNumber = 26, Position = "Gard", TeamId = 1014 },
+            new() { FullName = "Kessler Edwards", JerseyNumber = 15, Position = "Forvet", TeamId = 1014 },
+            new() { FullName = "Collin Malcolm", JerseyNumber = 17, Position = "Forvet", TeamId = 1014 },
+            new() { FullName = "Levi Randolph", JerseyNumber = 20, Position = "Forvet", TeamId = 1014 },
+            new() { FullName = "Ish Wainright", JerseyNumber = 24, Position = "Forvet", TeamId = 1014 },
+            new() { FullName = "Tomer Ginat", JerseyNumber = 41, Position = "Forvet", TeamId = 1014 },
+            new() { FullName = "Johnathan Motley", JerseyNumber = 0, Position = "Pivot", TeamId = 1014 },
+            new() { FullName = "Itay Segev", JerseyNumber = 6, Position = "Pivot", TeamId = 1014 },
+            new() { FullName = "Tai Odiase", JerseyNumber = 21, Position = "Pivot", TeamId = 1014 },
+            new() { FullName = "Dan Oturu", JerseyNumber = 25, Position = "Pivot", TeamId = 1014 },
+
+            // --- 1015: KOSNER BASKONIA ---
+            new() { FullName = "Markus Howard", JerseyNumber = 0, Position = "Gard", TeamId = 1015 },
+            new() { FullName = "Kobi Simmons", JerseyNumber = 2, Position = "Gard", TeamId = 1015 },
+            new() { FullName = "Markquis Nowell", JerseyNumber = 3, Position = "Gard", TeamId = 1015 },
+            new() { FullName = "Rafa Villar", JerseyNumber = 4, Position = "Gard", TeamId = 1015 },
+            new() { FullName = "Matteo Spagnolo", JerseyNumber = 10, Position = "Gard", TeamId = 1015 },
+            new() { FullName = "Trent Forrest", JerseyNumber = 11, Position = "Gard", TeamId = 1015 },
+            new() { FullName = "Gytis Radzevicius", JerseyNumber = 17, Position = "Gard", TeamId = 1015 },
+            new() { FullName = "Mate Khatiashvili", JerseyNumber = 30, Position = "Gard", TeamId = 1015 },
+            new() { FullName = "Rodions Kurucs", JerseyNumber = 7, Position = "Forvet", TeamId = 1015 },
+            new() { FullName = "Tadas Sedekerskis", JerseyNumber = 8, Position = "Forvet", TeamId = 1015 },
+            new() { FullName = "Timothe Luwawu-Cabarrot", JerseyNumber = 9, Position = "Forvet", TeamId = 1015 },
+            new() { FullName = "Pedro Souza", JerseyNumber = 22, Position = "Forvet", TeamId = 1015 },
+            new() { FullName = "Clement Frisch", JerseyNumber = 25, Position = "Forvet", TeamId = 1015 },
+            new() { FullName = "Vit Hrabar", JerseyNumber = 33, Position = "Forvet", TeamId = 1015 },
+            new() { FullName = "Stefan Joksimovic", JerseyNumber = 77, Position = "Forvet", TeamId = 1015 },
+            new() { FullName = "Mamadi Diakite", JerseyNumber = 1, Position = "Pivot", TeamId = 1015 },
+            new() { FullName = "Eugene Omoruyi", JerseyNumber = 5, Position = "Pivot", TeamId = 1015 },
+            new() { FullName = "Khalifa Diop", JerseyNumber = 18, Position = "Pivot", TeamId = 1015 },
+            new() { FullName = "Chiek Diallo", JerseyNumber = 19, Position = "Pivot", TeamId = 1015 },
+            new() { FullName = "Juom Maker Bol", JerseyNumber = 21, Position = "Pivot", TeamId = 1015 },
+
+            // --- 1016: LDLC ASVEL ---
+            new() { FullName = "Adam Atamna", JerseyNumber = 2, Position = "Gard", TeamId = 1016 },
+            new() { FullName = "Thomas Heurtel", JerseyNumber = 7, Position = "Gard", TeamId = 1016 },
+            new() { FullName = "Glynn Watson", JerseyNumber = 30, Position = "Gard", TeamId = 1016 },
+            new() { FullName = "Marvyn Wade", JerseyNumber = 88, Position = "Gard", TeamId = 1016 },
+            new() { FullName = "Shaquille Harrison", JerseyNumber = 3, Position = "Forvet", TeamId = 1016 },
+            new() { FullName = "Braian Angola", JerseyNumber = 6, Position = "Forvet", TeamId = 1016 },
+            new() { FullName = "Melvin Ajinca", JerseyNumber = 8, Position = "Forvet", TeamId = 1016 },
+            new() { FullName = "Bodian Massa", JerseyNumber = 10, Position = "Forvet", TeamId = 1016 },
+            new() { FullName = "Edwin Jackson", JerseyNumber = 11, Position = "Forvet", TeamId = 1016 },
+            new() { FullName = "David Lighty", JerseyNumber = 23, Position = "Forvet", TeamId = 1016 },
+            new() { FullName = "Paul Eboua", JerseyNumber = 0, Position = "Pivot", TeamId = 1016 },
+            new() { FullName = "Zachary Seljaas", JerseyNumber = 1, Position = "Pivot", TeamId = 1016 },
+            new() { FullName = "Mbaye Ndiaye", JerseyNumber = 24, Position = "Pivot", TeamId = 1016 },
+            new() { FullName = "Bastien Vautier", JerseyNumber = 32, Position = "Pivot", TeamId = 1016 },
+            new() { FullName = "Armel Traore", JerseyNumber = 94, Position = "Pivot", TeamId = 1016 },
+
+            // --- 1017: MACCABI RAPYD TEL AVIV ---
+            new() { FullName = "Iffe Lundberg", JerseyNumber = 0, Position = "Gard", TeamId = 1017 },
+            new() { FullName = "Jimmy Clark III", JerseyNumber = 2, Position = "Gard", TeamId = 1017 },
+            new() { FullName = "Amit Ebo", JerseyNumber = 5, Position = "Gard", TeamId = 1017 },
+            new() { FullName = "Lonnie Walker IV", JerseyNumber = 8, Position = "Gard", TeamId = 1017 },
+            new() { FullName = "John Dibartolomeo", JerseyNumber = 12, Position = "Gard", TeamId = 1017 },
+            new() { FullName = "Jeffrey Dowtin Jr", JerseyNumber = 21, Position = "Gard", TeamId = 1017 },
+            new() { FullName = "Tamir Blatt", JerseyNumber = 45, Position = "Gard", TeamId = 1017 },
+            new() { FullName = "Jaylen Hoard", JerseyNumber = 1, Position = "Forvet", TeamId = 1017 },
+            new() { FullName = "Gur Lavi", JerseyNumber = 4, Position = "Forvet", TeamId = 1017 },
+            new() { FullName = "Roman Sorkin", JerseyNumber = 9, Position = "Forvet", TeamId = 1017 },
+            new() { FullName = "O'shae J Brissett", JerseyNumber = 10, Position = "Forvet", TeamId = 1017 },
+            new() { FullName = "William Rayman", JerseyNumber = 11, Position = "Forvet", TeamId = 1017 },
+            new() { FullName = "Tamir Gold", JerseyNumber = 13, Position = "Forvet", TeamId = 1017 },
+            new() { FullName = "TJ Leaf", JerseyNumber = 22, Position = "Forvet", TeamId = 1017 },
+            new() { FullName = "Marcio Santos", JerseyNumber = 3, Position = "Pivot", TeamId = 1017 },
+            new() { FullName = "Zachary Hankins", JerseyNumber = 35, Position = "Pivot", TeamId = 1017 },
+
+            // --- 1018: OLYMPIACOS PIRAEUS ---
+            new() { FullName = "Thomas Walkup", JerseyNumber = 0, Position = "Gard", TeamId = 1018 },
+            new() { FullName = "Frank Ntilikina", JerseyNumber = 1, Position = "Gard", TeamId = 1018 },
+            new() { FullName = "Giannoulis Larentzakis", JerseyNumber = 5, Position = "Gard", TeamId = 1018 },
+            new() { FullName = "Monte Morris", JerseyNumber = 11, Position = "Gard", TeamId = 1018 },
+            new() { FullName = "Tyler Dorsey", JerseyNumber = 22, Position = "Gard", TeamId = 1018 },
+            new() { FullName = "Cory Joseph", JerseyNumber = 34, Position = "Gard", TeamId = 1018 },
+            new() { FullName = "Shaquielle McKissic", JerseyNumber = 77, Position = "Gard", TeamId = 1018 },
+            new() { FullName = "Tyson Ward", JerseyNumber = 3, Position = "Forvet", TeamId = 1018 },
+            new() { FullName = "Sasha Vezenkov", JerseyNumber = 14, Position = "Forvet", TeamId = 1018 },
+            new() { FullName = "Kostas Papanikolaou", JerseyNumber = 16, Position = "Forvet", TeamId = 1018 },
+            new() { FullName = "Alec Peters", JerseyNumber = 25, Position = "Forvet", TeamId = 1018 },
+            new() { FullName = "Evan Fournier", JerseyNumber = 94, Position = "Forvet", TeamId = 1018 },
+            new() { FullName = "Moustapha Fall", JerseyNumber = 10, Position = "Pivot", TeamId = 1018 },
+            new() { FullName = "Nikola Milutinov", JerseyNumber = 33, Position = "Pivot", TeamId = 1018 },
+            new() { FullName = "Donta Hall", JerseyNumber = 45, Position = "Pivot", TeamId = 1018 },
+            new() { FullName = "Tyrique Jones", JerseyNumber = 88, Position = "Pivot", TeamId = 1018 },
+
+            // --- 1019: PANATHINAIKOS AKTOR ---
+            new() { FullName = "TJ Shorts", JerseyNumber = 0, Position = "Gard", TeamId = 1019 },
+            new() { FullName = "Panagiotis Kalaitzakis", JerseyNumber = 5, Position = "Gard", TeamId = 1019 },
+            new() { FullName = "Kostas Sloukas", JerseyNumber = 10, Position = "Gard", TeamId = 1019 },
+            new() { FullName = "Jerian Grant", JerseyNumber = 22, Position = "Gard", TeamId = 1019 },
+            new() { FullName = "Kendrick Nunn", JerseyNumber = 25, Position = "Gard", TeamId = 1019 },
+            new() { FullName = "Vassilis Toliopoulos", JerseyNumber = 27, Position = "Gard", TeamId = 1019 },
+            new() { FullName = "Marius Grigonis", JerseyNumber = 40, Position = "Gard", TeamId = 1019 },
+            new() { FullName = "Cedi Osman", JerseyNumber = 6, Position = "Forvet", TeamId = 1019 },
+            new() { FullName = "Nigel Hayes-Davis", JerseyNumber = 11, Position = "Forvet", TeamId = 1019 },
+            new() { FullName = "Nikolaos Rogkavopoulos", JerseyNumber = 17, Position = "Forvet", TeamId = 1019 },
+            new() { FullName = "Alexandros Samodurov", JerseyNumber = 20, Position = "Forvet", TeamId = 1019 },
+            new() { FullName = "Juancho Hernangomez", JerseyNumber = 41, Position = "Forvet", TeamId = 1019 },
+            new() { FullName = "Konstantinos Mitoglou", JerseyNumber = 44, Position = "Forvet", TeamId = 1019 },
+            new() { FullName = "Mathias Lessort", JerseyNumber = 26, Position = "Pivot", TeamId = 1019 },
+            new() { FullName = "Kenneth Faried", JerseyNumber = 35, Position = "Pivot", TeamId = 1019 },
+
+            // --- 1020: PARIS BASKETBALL ---
+            new() { FullName = "Nadir Hifi", JerseyNumber = 2, Position = "Gard", TeamId = 1020 },
+            new() { FullName = "Justin Robinson", JerseyNumber = 5, Position = "Gard", TeamId = 1020 },
+            new() { FullName = "Sebastian Herrera", JerseyNumber = 7, Position = "Gard", TeamId = 1020 },
+            new() { FullName = "Jared Rhoden", JerseyNumber = 8, Position = "Gard", TeamId = 1020 },
+            new() { FullName = "Joel Ayayi", JerseyNumber = 11, Position = "Gard", TeamId = 1020 },
+            new() { FullName = "Yakuba Ouattara", JerseyNumber = 24, Position = "Gard", TeamId = 1020 },
+            new() { FullName = "Leopold Cavaliere", JerseyNumber = 4, Position = "Forvet", TeamId = 1020 },
+            new() { FullName = "Lamar Stevens", JerseyNumber = 9, Position = "Forvet", TeamId = 1020 },
+            new() { FullName = "Jeremy Morgan", JerseyNumber = 20, Position = "Forvet", TeamId = 1020 },
+            new() { FullName = "Amath M'Baye", JerseyNumber = 22, Position = "Forvet", TeamId = 1020 },
+            new() { FullName = "Daulton Hommes", JerseyNumber = 34, Position = "Forvet", TeamId = 1020 },
+            new() { FullName = "Derek Willis", JerseyNumber = 35, Position = "Forvet", TeamId = 1020 },
+            new() { FullName = "Allan Dokossi", JerseyNumber = 13, Position = "Pivot", TeamId = 1020 },
+            new() { FullName = "Mouhamed Faye", JerseyNumber = 15, Position = "Pivot", TeamId = 1020 },
+            new() { FullName = "Enzo Shahrvin", JerseyNumber = 18, Position = "Pivot", TeamId = 1020 },
+
+            // --- 1021: PARTIZAN MOZZART BET ---
+            new() { FullName = "Carlik Jones", JerseyNumber = 1, Position = "Gard", TeamId = 1021 },
+            new() { FullName = "Shake Milton", JerseyNumber = 2, Position = "Gard", TeamId = 1021 },
+            new() { FullName = "Duane Washington", JerseyNumber = 4, Position = "Gard", TeamId = 1021 },
+            new() { FullName = "Mitar Bosnjakovic", JerseyNumber = 8, Position = "Gard", TeamId = 1021 },
+            new() { FullName = "Nick Calathes", JerseyNumber = 33, Position = "Gard", TeamId = 1021 },
+            new() { FullName = "Miikka Muurinen", JerseyNumber = 3, Position = "Forvet", TeamId = 1021 },
+            new() { FullName = "Dylan Osetkowski", JerseyNumber = 5, Position = "Forvet", TeamId = 1021 },
+            new() { FullName = "Mario Nakic", JerseyNumber = 7, Position = "Forvet", TeamId = 1021 },
+            new() { FullName = "Vanja Marinkovic", JerseyNumber = 9, Position = "Forvet", TeamId = 1021 },
+            new() { FullName = "Uros Mijailovic", JerseyNumber = 10, Position = "Forvet", TeamId = 1021 },
+            new() { FullName = "Aleksej Pokusevski", JerseyNumber = 11, Position = "Forvet", TeamId = 1021 },
+            new() { FullName = "Sterling Brown", JerseyNumber = 12, Position = "Forvet", TeamId = 1021 },
+            new() { FullName = "Aleksa Radanov", JerseyNumber = 13, Position = "Forvet", TeamId = 1021 },
+            new() { FullName = "Isaac Bonga", JerseyNumber = 17, Position = "Forvet", TeamId = 1021 },
+            new() { FullName = "Arijan Lakic", JerseyNumber = 19, Position = "Forvet", TeamId = 1021 },
+            new() { FullName = "Uros Danilovic", JerseyNumber = 44, Position = "Forvet", TeamId = 1021 },
+            new() { FullName = "Tonye Jekiri", JerseyNumber = 23, Position = "Pivot", TeamId = 1021 },
+            new() { FullName = "Bruno Fernando", JerseyNumber = 24, Position = "Pivot", TeamId = 1021 },
+
+            // --- 1022: REAL MADRID ---
+            new() { FullName = "Facundo Campazzo", JerseyNumber = 7, Position = "Gard", TeamId = 1022 },
+            new() { FullName = "Theo Maledon", JerseyNumber = 12, Position = "Gard", TeamId = 1022 },
+            new() { FullName = "Sergio Llull", JerseyNumber = 23, Position = "Gard", TeamId = 1022 },
+            new() { FullName = "Andres Feliz", JerseyNumber = 24, Position = "Gard", TeamId = 1022 },
+            new() { FullName = "Trey Lyles", JerseyNumber = 0, Position = "Forvet", TeamId = 1022 },
+            new() { FullName = "David Kramer", JerseyNumber = 1, Position = "Forvet", TeamId = 1022 },
+            new() { FullName = "Alberto Abalde", JerseyNumber = 6, Position = "Forvet", TeamId = 1022 },
+            new() { FullName = "Gabriele Procida", JerseyNumber = 9, Position = "Forvet", TeamId = 1022 },
+            new() { FullName = "Mario Hezonja", JerseyNumber = 11, Position = "Forvet", TeamId = 1022 },
+            new() { FullName = "Izan Almansa", JerseyNumber = 13, Position = "Forvet", TeamId = 1022 },
+            new() { FullName = "Gabriel Deck", JerseyNumber = 14, Position = "Forvet", TeamId = 1022 },
+            new() { FullName = "Egor Amosov", JerseyNumber = 17, Position = "Forvet", TeamId = 1022 },
+            new() { FullName = "Gunars Grinvalds", JerseyNumber = 33, Position = "Forvet", TeamId = 1022 },
+            new() { FullName = "Chuma Okeke", JerseyNumber = 8, Position = "Pivot", TeamId = 1022 },
+            new() { FullName = "Usman Garuba", JerseyNumber = 16, Position = "Pivot", TeamId = 1022 },
+            new() { FullName = "Walter Tavares", JerseyNumber = 22, Position = "Pivot", TeamId = 1022 },
+            new() { FullName = "Alex Len", JerseyNumber = 25, Position = "Pivot", TeamId = 1022 },
+
+            // --- 1023: VALENCIA BASKET ---
+            new() { FullName = "Brancou Badio", JerseyNumber = 0, Position = "Gard", TeamId = 1023 },
+            new() { FullName = "Josep Puerto", JerseyNumber = 2, Position = "Gard", TeamId = 1023 },
+            new() { FullName = "Sergio De Larrea", JerseyNumber = 5, Position = "Gard", TeamId = 1023 },
+            new() { FullName = "Xabi Lopez-Arostegui", JerseyNumber = 6, Position = "Gard", TeamId = 1023 },
+            new() { FullName = "Jean Montero", JerseyNumber = 8, Position = "Gard", TeamId = 1023 },
+            new() { FullName = "Omari Moore", JerseyNumber = 10, Position = "Gard", TeamId = 1023 },
+            new() { FullName = "Darius Thompson", JerseyNumber = 13, Position = "Gard", TeamId = 1023 },
+            new() { FullName = "Tomas Talcis", JerseyNumber = 21, Position = "Gard", TeamId = 1023 },
+            new() { FullName = "Isaac Nogues", JerseyNumber = 32, Position = "Gard", TeamId = 1023 },
+            new() { FullName = "Alex Blanco", JerseyNumber = 35, Position = "Gard", TeamId = 1023 },
+            new() { FullName = "Kameron Taylor", JerseyNumber = 1, Position = "Forvet", TeamId = 1023 },
+            new() { FullName = "Nathan Reuvers", JerseyNumber = 3, Position = "Forvet", TeamId = 1023 },
+            new() { FullName = "Braxton Key", JerseyNumber = 7, Position = "Forvet", TeamId = 1023 },
+            new() { FullName = "Jorge Carot", JerseyNumber = 23, Position = "Forvet", TeamId = 1023 },
+            new() { FullName = "Jaime Pradilla", JerseyNumber = 4, Position = "Pivot", TeamId = 1023 },
+            new() { FullName = "Neal Sako", JerseyNumber = 12, Position = "Pivot", TeamId = 1023 },
+            new() { FullName = "Matthew Costello", JerseyNumber = 24, Position = "Pivot", TeamId = 1023 },
+            new() { FullName = "Yankuba Sima", JerseyNumber = 77, Position = "Pivot", TeamId = 1023 },
+
+            // --- 1024: VIRTUS BOLOGNA ---
+            new() { FullName = "Luca Vildoza", JerseyNumber = 1, Position = "Gard", TeamId = 1024 },
+            new() { FullName = "Matteo Baiocchi", JerseyNumber = 2, Position = "Gard", TeamId = 1024 },
+            new() { FullName = "Carsen Edwards", JerseyNumber = 3, Position = "Gard", TeamId = 1024 },
+            new() { FullName = "Alessandro Pajola", JerseyNumber = 6, Position = "Gard", TeamId = 1024 },
+            new() { FullName = "Matteo Accorsi", JerseyNumber = 8, Position = "Gard", TeamId = 1024 },
+            new() { FullName = "Daniel Hackett", JerseyNumber = 23, Position = "Gard", TeamId = 1024 },
+            new() { FullName = "Matthew Morgan", JerseyNumber = 30, Position = "Gard", TeamId = 1024 },
+            new() { FullName = "Saliou Niang", JerseyNumber = 7, Position = "Forvet", TeamId = 1024 },
+            new() { FullName = "Alen Smailagic", JerseyNumber = 9, Position = "Forvet", TeamId = 1024 },
+            new() { FullName = "Derrick Alston Jr.", JerseyNumber = 21, Position = "Forvet", TeamId = 1024 },
+            new() { FullName = "Francesco Ferrari", JerseyNumber = 24, Position = "Forvet", TeamId = 1024 },
+            new() { FullName = "Karim Jallow", JerseyNumber = 34, Position = "Forvet", TeamId = 1024 },
+            new() { FullName = "Nicola Akele", JerseyNumber = 45, Position = "Forvet", TeamId = 1024 },
+            new() { FullName = "Aliou Diarra", JerseyNumber = 31, Position = "Pivot", TeamId = 1024 },
+            new() { FullName = "Mouhamet Diouf", JerseyNumber = 35, Position = "Pivot", TeamId = 1024 },
+
+            // --- 1025: ZALGIRIS KAUNAS ---
+            new() { FullName = "Nigel Williams-Goss", JerseyNumber = 1, Position = "Gard", TeamId = 1025 },
+            new() { FullName = "Sylvain Francisco", JerseyNumber = 3, Position = "Gard", TeamId = 1025 },
+            new() { FullName = "Kajus Mikalauskas", JerseyNumber = 4, Position = "Gard", TeamId = 1025 },
+            new() { FullName = "Dovydas Giedraitis", JerseyNumber = 9, Position = "Gard", TeamId = 1025 },
+            new() { FullName = "Maodo Lo", JerseyNumber = 12, Position = "Gard", TeamId = 1025 },
+            new() { FullName = "Mantas Rubstavicius", JerseyNumber = 17, Position = "Gard", TeamId = 1025 },
+            new() { FullName = "Deividas Sirvydis", JerseyNumber = 91, Position = "Gard", TeamId = 1025 },
+            new() { FullName = "Ignas Brazdeikis", JerseyNumber = 8, Position = "Forvet", TeamId = 1025 },
+            new() { FullName = "Azuolas Tubelis", JerseyNumber = 10, Position = "Forvet", TeamId = 1025 },
+            new() { FullName = "Dustin Sleva", JerseyNumber = 14, Position = "Forvet", TeamId = 1025 },
+            new() { FullName = "Arnas Butkevicius", JerseyNumber = 51, Position = "Forvet", TeamId = 1025 },
+            new() { FullName = "Edgaras Ulanovas", JerseyNumber = 92, Position = "Forvet", TeamId = 1025 },
+            new() { FullName = "Moses Wright", JerseyNumber = 7, Position = "Pivot", TeamId = 1025 },
+            new() { FullName = "Laurynas Birutis", JerseyNumber = 15, Position = "Pivot", TeamId = 1025 },
+            new() { FullName = "Ignas Stombergas", JerseyNumber = 16, Position = "Pivot", TeamId = 1025 },
+            new() { FullName = "Dominykas Daubaris", JerseyNumber = 27, Position = "Pivot", TeamId = 1025 }
+        };
+
+        foreach (var p in devKadroListesi) 
+        {
+            var response = await Http.PostAsJsonAsync("http://localhost:5090/api/Players", p);
+            
+            // Eğer tek bir oyuncu bile eklenirken hata alırsak döngüyü durdur ve hatayı göster
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Hata Oluştu! Oyuncu: {p.FullName}, Kod: {response.StatusCode}, Detay: {errorContent}";
+                isLoading = false;
+                StateHasChanged();
+                return; // Metottan çık
+            }
+        }
+
+        await LoadAllData();
+        isLoading = false;
+        errorMessage = "Muazzam! Tüm lig tek seferde veritabanına başarıyla aktarıldı. ✅";
+    }
+
+    private async Task FiksturVeMaclariOlustur()
+    {
+        isLoading = true;
+        errorMessage = "1. ve 2. Hafta fikstürleri sisteme işleniyor... 📅🏀";
+        StateHasChanged();
+
+        var macListesi = new List<MatchCreateDto>
+        {
+            // ==================== 1. HAFTA (SONUÇLANMIŞ MAÇLAR - GEÇMİŞ TARİH) ====================
+            new() { HomeTeamId = 1006, AwayTeamId = 1013, HomeScore = 88, AwayScore = 85, MatchDate = new DateTime(2026, 5, 14, 20, 0, 0) }, // Anadolu Efes - Fenerbahçe
+            new() { HomeTeamId = 1007, AwayTeamId = 1022, HomeScore = 79, AwayScore = 82, MatchDate = new DateTime(2026, 5, 14, 21, 0, 0) }, // Monaco - Real Madrid
+            new() { HomeTeamId = 1008, AwayTeamId = 1021, HomeScore = 92, AwayScore = 88, MatchDate = new DateTime(2026, 5, 14, 21, 45, 0) }, // Crvena Zvezda - Partizan
+            new() { HomeTeamId = 1009, AwayTeamId = 1025, HomeScore = 81, AwayScore = 75, MatchDate = new DateTime(2026, 5, 15, 19, 30, 0) }, // Dubai - Zalgiris
+            new() { HomeTeamId = 1010, AwayTeamId = 1011, HomeScore = 74, AwayScore = 80, MatchDate = new DateTime(2026, 5, 15, 20, 30, 0) }, // Milano - Barcelona
+            new() { HomeTeamId = 1012, AwayTeamId = 1024, HomeScore = 85, AwayScore = 78, MatchDate = new DateTime(2026, 5, 15, 21, 0, 0) }, // Bayern - Virtus Bologna
+            new() { HomeTeamId = 1014, AwayTeamId = 1017, HomeScore = 89, AwayScore = 91, MatchDate = new DateTime(2026, 5, 16, 18, 0, 0) }, // Hapoel - Maccabi
+            new() { HomeTeamId = 1015, AwayTeamId = 1023, HomeScore = 77, AwayScore = 83, MatchDate = new DateTime(2026, 5, 16, 20, 0, 0) }, // Baskonia - Valencia
+            new() { HomeTeamId = 1016, AwayTeamId = 1020, HomeScore = 68, AwayScore = 72, MatchDate = new DateTime(2026, 5, 16, 21, 0, 0) }, // ASVEL - Paris
+            new() { HomeTeamId = 1018, AwayTeamId = 1019, HomeScore = 84, AwayScore = 86, MatchDate = new DateTime(2026, 5, 17, 21, 15, 0) }, // Olympiacos - Panathinaikos
+
+            // ==================== 2. HAFTA (GELECEKTEKİ MAÇLAR - OYNANMADI 0-0) ====================
+            new() { HomeTeamId = 1013, AwayTeamId = 1007, HomeScore = 0, AwayScore = 0, MatchDate = new DateTime(2026, 5, 21, 20, 0, 0) }, // Fenerbahçe - Monaco
+            new() { HomeTeamId = 1022, AwayTeamId = 1006, HomeScore = 0, AwayScore = 0, MatchDate = new DateTime(2026, 5, 21, 21, 0, 0) }, // Real Madrid - Anadolu Efes
+            new() { HomeTeamId = 1021, AwayTeamId = 1009, HomeScore = 0, AwayScore = 0, MatchDate = new DateTime(2026, 5, 21, 21, 45, 0) }, // Partizan - Dubai
+            new() { HomeTeamId = 1025, AwayTeamId = 1008, HomeScore = 0, AwayScore = 0, MatchDate = new DateTime(2026, 5, 22, 19, 30, 0) }, // Zalgiris - Crvena Zvezda
+            new() { HomeTeamId = 1011, AwayTeamId = 1012, HomeScore = 0, AwayScore = 0, MatchDate = new DateTime(2026, 5, 22, 20, 30, 0) }, // Barcelona - Bayern
+            new() { HomeTeamId = 1024, AwayTeamId = 1010, HomeScore = 0, AwayScore = 0, MatchDate = new DateTime(2026, 5, 22, 21, 0, 0) }, // Virtus Bologna - Milano
+            new() { HomeTeamId = 1017, AwayTeamId = 1015, HomeScore = 0, AwayScore = 0, MatchDate = new DateTime(2026, 5, 23, 18, 0, 0) }, // Maccabi - Baskonia
+            new() { HomeTeamId = 1023, AwayTeamId = 1014, HomeScore = 0, AwayScore = 0, MatchDate = new DateTime(2026, 5, 23, 20, 0, 0) }, // Valencia - Hapoel
+            new() { HomeTeamId = 1020, AwayTeamId = 1018, HomeScore = 0, AwayScore = 0, MatchDate = new DateTime(2026, 5, 24, 19, 0, 0) }, // Paris - Olympiacos
+            new() { HomeTeamId = 1019, AwayTeamId = 1016, HomeScore = 0, AwayScore = 0, MatchDate = new DateTime(2026, 5, 24, 21, 15, 0) }  // Panathinaikos - ASVEL
+        };
+
+        foreach (var m in macListesi)
+        {
+            var response = await Http.PostAsJsonAsync("http://localhost:5090/api/Matches", m);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Maç eklenirken hata oluştu! Kod: {response.StatusCode}, Detay: {errorContent}";
+                isLoading = false;
+                StateHasChanged();
+                return;
+            }
+        }
+
+        await LoadAllData();
+        isLoading = false;
+        errorMessage = "1. Hafta (Sonuçlanan) ve 2. Hafta (Gelecek) fikstürleri başarıyla oluşturuldu! 📅✅";
+    }
+    */
+    // ==================== TAKIM İŞLEMLERİ ====================
+    private async Task SaveTeam()
+    {
+        if (editingTeamId == 0)
+            await Http.PostAsJsonAsync("http://localhost:5090/api/Teams", currentTeam);
+        else
+            await Http.PutAsJsonAsync($"http://localhost:5090/api/Teams/{editingTeamId}", currentTeam);
+        
+        CancelEdit();
+        await LoadAllData();
+    }
+
+    private void EditTeam(TeamDto team)
+    {
+        editingTeamId = team.Id;
+        currentTeam = new TeamCreateDto { Name = team.Name, City = team.City, Coach = team.Coach, FoundedYear = team.FoundedYear };
+    }
+
+    private async Task DeleteTeam(int id)
+    {
+        errorMessage = string.Empty; // Önce eski hataları temizle
+        
+        var response = await Http.DeleteAsync($"http://localhost:5090/api/Teams/{id}");
+        
+        if (response.IsSuccessStatusCode)
+        {
+            // Silme başarılıysa listeyi yenile
+            await LoadAllData();
+        }
+        else
+        {
+            // Veritabanı silmeyi reddettiyse kullanıcıya bilgi ver
+            errorMessage = "Bu takımı silemezsiniz! Çünkü bu takıma kayıtlı oyuncular veya fikstürde bu takımın maçları bulunuyor. Önce onları silmelisiniz.";
+        }
+    }
+
+    // ==================== OYUNCU İŞLEMLERİ ====================
+    private async Task SavePlayer()
+    {
+        if (editingPlayerId == 0)
+            await Http.PostAsJsonAsync("http://localhost:5090/api/Players", currentPlayer);
+        else
+            await Http.PutAsJsonAsync($"http://localhost:5090/api/Players/{editingPlayerId}", currentPlayer);
+        
+        CancelEdit();
+        await LoadAllData();
+    }
+
+    private void EditPlayer(PlayerDto player)
+    {
+        editingPlayerId = player.Id;
+        currentPlayer = new PlayerCreateDto { FullName = player.FullName, JerseyNumber = player.JerseyNumber, Position = player.Position, TeamId = player.TeamId };
+    }
+
+    private async Task DeletePlayer(int id)
+    {
+        await Http.DeleteAsync($"http://localhost:5090/api/Players/{id}");
+        await LoadAllData();
+    }
+
+    // ==================== MAÇ İŞLEMLERİ ====================
+    private async Task SaveMatch()
+    {
+        if (editingMatchId == 0)
+            await Http.PostAsJsonAsync("http://localhost:5090/api/Matches", currentMatch);
+        else
+            await Http.PutAsJsonAsync($"http://localhost:5090/api/Matches/{editingMatchId}", currentMatch);
+        
+        CancelEdit();
+        await LoadAllData();
+    }
+
+    private void EditMatch(MatchDto match)
+    {
+        editingMatchId = match.Id;
+        currentMatch = new MatchCreateDto { HomeTeamId = match.HomeTeamId, AwayTeamId = match.AwayTeamId, HomeScore = match.HomeScore, AwayScore = match.AwayScore, MatchDate = match.MatchDate };
+    }
+
+    private async Task DeleteMatch(int id)
+    {
+        await Http.DeleteAsync($"http://localhost:5090/api/Matches/{id}");
+        await LoadAllData();
+    }
+
+    private async Task Logout()
+    {
+        await JS.InvokeVoidAsync("localStorage.removeItem", "jwt_token");
+        Navigation.NavigateTo("/login");
+    }
+
+    // ==================== DTO SINIFLARI ====================
+    public class TeamDto { public int Id { get; set; } public string Name { get; set; } = string.Empty; public string City { get; set; } = string.Empty; public string Coach { get; set; } = string.Empty; public int FoundedYear { get; set; } }
+    public class TeamCreateDto { public string Name { get; set; } = string.Empty; public string City { get; set; } = string.Empty; public string Coach { get; set; } = string.Empty; public int FoundedYear { get; set; } }
+    
+    public class PlayerDto { public int Id { get; set; } public string FullName { get; set; } = string.Empty; public int JerseyNumber { get; set; } public string Position { get; set; } = string.Empty; public int TeamId { get; set; } public string TeamName { get; set; } = string.Empty; }
+    public class PlayerCreateDto { public string FullName { get; set; } = string.Empty; public int JerseyNumber { get; set; } public string Position { get; set; } = string.Empty; public int TeamId { get; set; } }
+    
+    public class MatchDto { public int Id { get; set; } public int HomeTeamId { get; set; } public int AwayTeamId { get; set; } public int HomeScore { get; set; } public int AwayScore { get; set; } public DateTime MatchDate { get; set; } public string HomeTeamName { get; set; } = string.Empty; public string AwayTeamName { get; set; } = string.Empty; }
+    public class MatchCreateDto { public int HomeTeamId { get; set; } public int AwayTeamId { get; set; } public int HomeScore { get; set; } public int AwayScore { get; set; } public DateTime MatchDate { get; set; } }
+}

@@ -1,0 +1,78 @@
+@page "/login"
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Admin Giriş</PageTitle>
+
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6 col-lg-4">
+        <div class="card shadow-lg border-0 rounded-lg mt-5">
+            <div class="card-header bg-dark text-white text-center py-4">
+                <h3 class="mb-0 fw-bold">⚙️ Yönetici Girişi</h3>
+            </div>
+            <div class="card-body p-4 bg-light">
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="alert alert-danger shadow-sm">@errorMessage</div>
+                }
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold text-secondary">Kullanıcı Adı</label>
+                    <input type="text" class="form-control form-control-lg" @bind="loginModel.Username" placeholder="Örn: admin" />
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-bold text-secondary">Şifre</label>
+                    <input type="password" class="form-control form-control-lg" @bind="loginModel.Password" placeholder="Şifreniz" />
+                </div>
+                
+                <button class="btn btn-primary btn-lg w-100 fw-bold shadow-sm" @onclick="HandleLogin">
+                    Sisteme Giriş Yap 🚀
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private LoginDto loginModel = new();
+    private string? errorMessage;
+
+    private async Task HandleLogin()
+    {
+        errorMessage = null;
+        
+        // 1. Senin AuthController'ına bilgileri yolluyoruz
+        var response = await Http.PostAsJsonAsync("http://localhost:5090/api/Auth/login", loginModel);
+        
+        if (response.IsSuccessStatusCode)
+        {
+            // 2. Giriş başarılıysa API'den dönen Token'ı yakalıyoruz
+            var result = await response.Content.ReadFromJsonAsync<TokenResponse>();
+            if (result != null && !string.IsNullOrEmpty(result.Token))
+            {
+                // 3. Token'ı kaybetmemek için tarayıcının hafızasına (LocalStorage) kaydediyoruz
+                await JS.InvokeVoidAsync("localStorage.setItem", "jwt_token", result.Token);
+                
+                // 4. Token'ı cebe attığımıza göre Admin paneline uçabiliriz!
+                Navigation.NavigateTo("/admin");
+            }
+        }
+        else
+        {
+            errorMessage = "Kullanıcı adı veya şifre hatalı!";
+        }
+    }
+
+    // Backend'deki DTO'ların aynısı
+    public class LoginDto
+    {
+        public string Username { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+
+    public class TokenResponse
+    {
+        public string Token { get; set; } = string.Empty;
+    }
+}
